@@ -1,7 +1,8 @@
-import { computed, signal } from '@preact/signals'
+import { computed, signal, useComputed, useSignal } from '@preact/signals'
 import './app.css'
 import Plotly from 'plotly.js-dist-min'
 import { Bezier } from "bezier-js";
+var emitter = window.tabEmitter()
 /*
 logic:
  earnings are more heavily weighted than views
@@ -56,7 +57,6 @@ const samples = {
   ]
 }
 
-
 const views = signal<number>(100)
 const earnings = signal<number>(100)
 const heatmap = signal<number[][]>([])
@@ -64,6 +64,30 @@ const heatmapRef = signal<HTMLElement | null>(null)
 const weightSide = signal<number>(-1)
 const invertScore = signal<boolean>(true)
 const curve = signal<{ x: number, y: number }[]>(samples.rand1)
+const pointList = signal<{ [id: string]: { x: number, y: number } }>(samples.manual.reduce((acc, p, i) => ({ ...acc, [i]: p }), {}))
+const canvas = computed(() => {
+  const heatmap = heatmapRef.value
+  const offset = {
+    top: 10,
+    left: 10,
+    bottom: 10,
+    right: 10
+  };
+  const width = heatmap?.clientWidth || 1000
+  const height = heatmap?.clientHeight || 1000
+  const box = {
+    bottomLeft: offset.bottom,
+    bottomRight: width - offset.right,
+    topLeft: offset.top,
+    topRight: height - offset.left
+  }
+  return {
+    width,
+    height,
+    offset,
+    box
+  }
+})
 const randomCoords = () => {
   const length = parseInt((Math.random() * 10).toString())
   const coords = Array.from({ length }, () => {
@@ -78,7 +102,10 @@ const score = computed(() => {
   return getScore(earnings.value, views.value)
 })
 const weightsLUT = computed(() => {
-  return new Bezier(curve.value).getLUT(100)
+  return new Bezier(Object.values(pointList.value)).getLUT(100)
+})
+emitter.on('points', (data) => {
+  pointList.value = data
 })
 
 
@@ -147,7 +174,9 @@ heatmap.subscribe((data) => {
   }
 })
 curve.subscribe((c) => {
-  console.log(c)
+  heatmap.value = buildHeatmap()
+})
+pointList.subscribe((c) => {
   heatmap.value = buildHeatmap()
 })
 
@@ -322,7 +351,6 @@ const Inputs = () => {
         backgroundColor: 'rgba(255,255,255,0.7)',
         color: 'black',
       }}>
-        {/* <Preview /> */}
         <label style={{ display: 'flex', flexDirection: 'row', gap: '1rem', alignItems: 'center', justifyContent: 'end' }}>
           Views Score:
           <ViewsInput />
@@ -341,10 +369,10 @@ const Inputs = () => {
     </>
   )
 }
-const inputs = signal<boolean>(true)
+const inputs = signal<boolean>(false)
 const _heatmap = signal<boolean>(true)
-const table = signal<boolean>(true)
-const draw = signal<boolean>(true)
+const table = signal<boolean>(false)
+const draw = signal<boolean>(false)
 const INPUTS = computed(() => {
   if (inputs.value) {
     return <Inputs />
@@ -392,14 +420,12 @@ const Controls = () => {
       <button onClick={() => {
         randomCoords()
       }}> Random Weights</button>
-      {/* <button onClick={() => {
-        untoggleAll()
-        draw.value = true
-      }}> Draw</button> */}
+      <button onClick={() => {
+        open('#draw', '_blank')
+      }}> Draw</button>
     </>
   )
 }
-
 
 
 export function App() {
